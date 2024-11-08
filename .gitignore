@@ -1,0 +1,20 @@
+# Root level
+_sandbox.py
+build/
+.mypy_cache/
+.coverage
+.coverage.*
+.nox/
+.python-version
+.pytype/
+dist/
+docs/_build/
+__pycache__/
+# Everywhere
+*.egg-info/
+**/.mypy_cache/
+**/.ruff_cache
+**/.python-version
+**/.pytype/
+**/*.egg-info/
+**/__pycache__/

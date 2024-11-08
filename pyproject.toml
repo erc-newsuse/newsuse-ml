@@ -1,0 +1,166 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+# This may be empty, but is needed to enable 'setuptools-scm'
+version_scheme = "post-release"
+local_scheme = "node-and-timestamp"
+
+[project]
+name = "newsuse-ml"
+description = "Machine learning tools for the NEWSUSE project."
+authors = [{ name = "Szymon Talaga",  email="stalaga@uw.edu.pl"}]
+license = {file = "LICENSE"}
+
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "newsuse @ git+ssh://git@github.com/erc-newsuse/newsuse.git",
+    "scikit-learn>=1.5",
+    "torch>=2.4",
+    "transformers>=4.44",
+    "datasets>=2.21",
+    "evaluate>=0.4",
+    "accelerate>=0.34",
+    "setfit>=1.1",
+    "optuna>=4.0",
+]
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 4 - Beta"
+]
+
+[project.optional-dependencies]
+dev = [
+    "setuptools-scm>=8",
+    "ipython>=8.0",
+    "ipdb>=0.10",
+    "ipykernel",
+    "build",
+    "twine",
+    "pre-commit>=2.16.0",
+    "pre-commit-hooks>=4.1.0",
+    "newsuse-ml[test,lint,mypy]"
+]
+lint = ["ruff>=0.1.9"]
+mypy = ["mypy>=1.8.0"]
+test = [
+    "pytest>=7.0",
+    "pytest-sugar",
+    "coverage"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["newsuse", "newsuse.*"]
+namespaces = true
+
+[tool.mypy]
+strict = false
+warn_unreachable = true
+pretty = true
+show_column_numbers = true
+show_error_codes = true
+show_error_context = true
+ignore_missing_imports = true
+implicit_reexport = true
+plugins = "numpy.typing.mypy_plugin"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 92
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle (errors)
+    "W",     # pycodestyle (warnings)
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "Q",     # flake8-quotes
+    "C90",   # mccabe
+    "B",     # flake8-bugbear
+    "S",     # flake8-bandit
+    "G",     # flake8-logging-format
+    "EM",    # flake8-errmsg
+    "FA",    # flake8-future-annotations
+    "SIM",   # flake8-simplify
+    "PIE",   # flake8-pie
+    "PT",    # flake8-pytest-style
+    "TID",   # flake8-tidy-imports
+    "ICN",   # flake8-import-conventions
+    "ARG",   # flake8-unused-arguments
+    "PTH",   # flake8-use-pathlib
+    "TD",    # flake8-todos
+    "FIX",   # flake8-fixme
+    "C4",    # flake8-comprehensions
+    "DTZ",   # flake8-datetimez
+    "SLOT",  # flake8-slots
+    "RET",   # flake8-return
+    "RSE",   # flake8-raise
+    "PYI",   # flake8-pyi
+    "PERF",  # perflint
+    "NPY"    # numpy,
+]
+ignore = [
+    "SIM105",
+    "RET504",
+    "TID252",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"test_*.py" = ["S101"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--verbose",
+    "--tb=no",
+    "--pdbcls=IPython.terminal.debugger:Pdb",
+    "--import-mode=importlib",
+    "--doctest-modules"
+]
+testpaths = ["tests", "newsuse"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "IGNORE_EXCEPTION_DETAIL",
+    "ELLIPSIS"
+]
+
+[tool.coverage.paths]
+source = ["newsuse", "*/site-packages"]
+tests = ["tests", "*/tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["newsuse", "tests"]
+command_line = "-m pytest"
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_also = [
+    # Don't complain about missing debug-only code:
+    "def __repr__",
+    "if self\\.debug",
+
+    # Don't complain if tests don't hit defensive assertion code:
+    "raise AssertionError",
+    "raise NotImplementedError",
+
+    # Don't complain if non-runnable code isn't run:
+    "if 0:",
+    "if __name__ == .__main__.:",
+
+    # Don't complain about abstract methods, they aren't run:
+    "@(abc\\.)?abstractmethod",
+    ]
+
+ignore_errors = true
+
+[tool.coverage.html]
+directory = "coverage_html_report"

@@ -1,0 +1,9 @@
+name: newsuse-ml
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+  - huggingface
+dependencies:
+  - python>=3.11,<3.13
+  - pip

@@ -1,0 +1,20 @@
+{
+    "_checkout": null,
+    "_output_dir": "/home/newsuse/python/packages",
+    "_repo_dir": "../cookiecutters/package/",
+    "_template": "../cookiecutters/package/",
+    "author": "Szymon Talaga",
+    "copyright_year": "2024",
+    "description": "Machine learning tools for the NEWSUSE project.",
+    "development_status": "Development Status :: 4 - Beta",
+    "email": "stalaga@uw.edu.pl",
+    "friendly_name": "Newsuse ML",
+    "full_project_name": "newsuse-ml",
+    "github_owner": "erc-newsuse",
+    "github_repo": "newsuse-ml",
+    "license": "MIT",
+    "namespace": "newsuse",
+    "package_name": "ml",
+    "project_name": "ml",
+    "template_version": "0.1"
+}
