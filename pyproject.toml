@@ -19,7 +19,7 @@ dependencies = [
     "newsuse @ git+ssh://git@github.com/erc-newsuse/newsuse.git",
     "scikit-learn>=1.5",
     "torch>=2.4",
-    "transformers>=4.44",
+    "transformers>=4.44,<4.46",
     "datasets>=2.21",
     "evaluate>=0.4",
     "accelerate>=0.34",

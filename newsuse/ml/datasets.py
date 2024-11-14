@@ -20,6 +20,9 @@ __all__ = (
 )
 
 
+# DatasetDict ----------------------------------------------------------------------------
+
+
 class DatasetDict(datasets.DatasetDict):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -62,12 +65,10 @@ class DatasetDict(datasets.DatasetDict):
         return self.__class__(super().map(*args, **kwargs))
 
     def class_encode_column(self, *args: Any, **kwargs) -> Self:
-        return self.__class__(
-            {
-                name: split.class_encode_column(*args, **kwargs)
-                for name, split in self.items()
-            }
-        )
+        return self.__class__(super().class_encode_column(*args, **kwargs))
+
+    def align_labels_with_mapping(self, *args: Any, **kwargs: Any) -> Self:
+        return self.__class__(super().align_labels_with_mapping(*args, **kwargs))
 
     def rename_column(self, *args: Any, **kwargs: Any) -> Self:
         return self.__class__(super().rename_column(*args, **kwargs))
@@ -76,7 +77,9 @@ class DatasetDict(datasets.DatasetDict):
         return self.__class__(super().rename_columns(*args, **kwargs))
 
     def remove_columns(self, *args: Any, **kwargs: Any) -> Self:
-        return self.__class__(super().remove_columns(*args, **kwargs))
+        return self.__class__(
+            {name: split.remove_columns(*args, **kwargs) for name, split in self.items()}
+        )
 
     def sample(
         self,
@@ -133,10 +136,45 @@ class DatasetDict(datasets.DatasetDict):
             start += nrows
         return self.__class__(dct)
 
+    def select_splits(self, *splits: str) -> Self:
+        """Select dataset splits.
+
+        Use all when ``*splits`` are falsy.
+        """
+        if not splits:
+            return self
+        return self.__class__(
+            {name: split for name, split in self.items() if name in splits}
+        )
+
+    def drop_splits(self, *splits: str) -> Self:
+        """Drop dataset splits."""
+        if not splits:
+            return self
+        return self.__class__(
+            {name: split for name, split in self.items() if name not in splits}
+        )
+
+    def update_info(self, info: datasets.DatasetInfo) -> Self:
+        """Update dataset information on splits."""
+        return self.__class__(
+            {name: split.update_info(info) for name, split in self.items()}
+        )
+
+    def drop_empty(self) -> Self:
+        """Drop empty splits."""
+        return self.__class__(
+            {name: split for name, split in self.items() if len(split) > 0}
+        )
+
+
+# Dataset --------------------------------------------------------------------------------
+
 
 class Dataset(datasets.Dataset):
     def get_seed(self, seed: int | None = None) -> int:
-        return hashseed(tuple(self["key"]), seed)
+        keys = tuple(sorted(self["key"]))
+        return hashseed(keys, seed)
 
     @classmethod
     def from_annotations(
@@ -180,7 +218,8 @@ class Dataset(datasets.Dataset):
         dataset = (
             cls.from_pandas(data)
             .rename_column("human", "label")
-            .class_encode_column("label", names=annotations.config.labels)
+            .class_encode_column("label")
+            .align_labels_with_mapping(annotations.config.labels, "label")
         )
         return cls.from_dataset(dataset)
 
@@ -205,15 +244,15 @@ class Dataset(datasets.Dataset):
             if isinstance(v, float):
                 splits[k] = int(ceil(v * n_examples))
 
-        n_in_split = sum(splits.values())
-        if n_in_split > n_examples:
+        n_in_splits = sum(splits.values())
+        if n_in_splits > n_examples:
             errmsg = "cannot define splits with more examples than the size of the dataset"
             raise ValueError(errmsg)
-        if n_in_split < n_examples:
+        if n_in_splits < n_examples:
             if main_split in splits:
                 errmsg = f"default split name '{main_split}' is already defined"
                 raise ValueError(errmsg)
-            splits[main_split] = n_examples - n_in_split
+            splits[main_split] = n_examples - n_in_splits
 
         seed = self.get_seed(seed)
         kwargs = {"seed": seed, "keep_in_memory": True, **kwargs}
@@ -224,13 +263,6 @@ class Dataset(datasets.Dataset):
             dset[name] = data.select(range(start, start + n), keep_in_memory=True)
             start += n
         return DatasetDict(dset)
-
-    @make_splits.register
-    def _(
-        self, split: tuple, *splits: tuple[str, float | int], **kwargs: Any
-    ) -> DatasetDict[str, Self]:
-        dct = dict([split, *splits])
-        return self.split(dct, **kwargs)
 
     def shuffle(self, *args: Any, **kwargs: Any) -> Self:
         kwargs["seed"] = self.get_seed(kwargs.get("seed"))
@@ -269,9 +301,11 @@ class Dataset(datasets.Dataset):
         )
 
     @classmethod
-    def from_disk(cls, *args: Any, **kwargs: Any) -> Self | DatasetDict:
+    def from_disk(
+        cls, *args: Any, keep_in_memory: bool | None = True, **kwargs: Any
+    ) -> Self | DatasetDict:
         """Load using :func:`datasets.load_from_disk`."""
-        dataset = datasets.load_from_disk(*args, **kwargs)
+        dataset = datasets.load_from_disk(*args, keep_in_memory=keep_in_memory, **kwargs)
         if isinstance(dataset, datasets.DatasetDict):
             return DatasetDict(dataset)
         return cls.from_dataset(dataset)
@@ -313,36 +347,32 @@ class Dataset(datasets.Dataset):
     def rename_columns(self, *args: Any, **kwargs: Any) -> Self:
         return self.from_dataset(super().rename_columns(*args, **kwargs))
 
-    def remove_columns(self, *args: Any, **kwargs: Any) -> Self:
-        return self.from_dataset(super().remove_columns(*args, **kwargs))
-
-    def class_encode_column(
-        self, column: str, names: Iterable[str] | None = None, *args: Any, **kwargs: Any
+    def remove_columns(
+        self,
+        column_names: str | list[str],
+        *args: Any,
+        allow_missing: bool = False,
+        **kwargs: Any,
     ) -> Self:
-        names = list(names or [])
+        if isinstance(column_names, str):
+            column_names = [column_names]
+        if allow_missing:
+            column_names = [c for c in column_names if c in self.column_names]
+        if not column_names:
+            return self
+        return self.from_dataset(super().remove_columns(column_names, *args, **kwargs))
 
-        if isinstance(self.features[column], datasets.ClassLabel):
-            dataset = self.from_dataset(self)
-            if names:
-                dataset.info.features[column].names = names  # type: ignore
-            return dataset
+    def class_encode_column(self, *args: Any, **kwargs: Any) -> Self:
+        return self.from_dataset(super().class_encode_column(*args, **kwargs))
 
-        dataset = super().class_encode_column(column, *args, **kwargs)
-        schema = dataset.info.features[column]  # type: ignore
-        if names:
-            if schema.names == [str(i) for i in range(len(names))]:
-                schema.names = names
-            else:
-                label2id = {n: i for i, n in enumerate(dataset.features[column].names)}
-                remap = {label2id[n]: i for i, n in enumerate(names)}
-
-                def do_remap(d):
-                    d[column] = remap[d[column]]
-                    return d
-
-                dataset = dataset.map(do_remap)
-                dataset.info.features[column].names = names  # type: ignore
-        return self.from_dataset(dataset)
+    def align_labels_with_mapping(
+        self, label2id: Mapping | Iterable[str], *args: Any, **kwargs: Any
+    ) -> Self:
+        if not isinstance(label2id, Mapping):
+            label2id = {label: i for i, label in enumerate(label2id)}
+        return self.from_dataset(
+            super().align_labels_with_mapping(label2id, *args, **kwargs)
+        )
 
     @singledispatchmethod
     def sample(

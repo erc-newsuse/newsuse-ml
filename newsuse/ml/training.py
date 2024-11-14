@@ -2,7 +2,7 @@ import warnings
 from collections.abc import Hashable, Iterable
 from pathlib import Path
 from shutil import rmtree
-from typing import Any, Literal
+from typing import Any
 
 import torch
 import transformers
@@ -15,9 +15,6 @@ from .evaluation import Evaluation
 
 _LabelsT = int | Iterable[Hashable]
 _LossOutputT = torch.Tensor | tuple[torch.Tensor, torch.Tensor]
-_ProblemT = Literal[
-    "regression", "single_label_classification", "multi_label_classification"
-]
 
 
 def label_config(labels: _LabelsT) -> dict[str, Any]:
@@ -63,6 +60,7 @@ class Trainer(transformers.Trainer):
         model: PreTrainedModel,
         inputs: dict[str, torch.Tensor],
         return_outputs: bool = False,
+        **kwargs: Any,  # noqa
     ) -> _LossOutputT:
         labels = inputs.pop("labels")
         weights = inputs.pop("weight", None)
