@@ -1,17 +1,24 @@
 import warnings
-from collections.abc import Hashable, Iterable
+from collections.abc import Callable, Hashable, Iterable, Sequence
 from pathlib import Path
 from shutil import rmtree
 from typing import Any
 
+import optuna
 import torch
 import transformers
 from transformers import PreTrainedModel
 from transformers.trainer import TrainOutput
 
+from newsuse.config import Config, Paths
 from newsuse.types import PathLike
 
+from . import AutoModelForSequenceClassification
+from .datasets import DatasetDict
 from .evaluation import Evaluation
+
+__all__ = ("TrainingArguments", "Trainer", "define_objective")
+
 
 _LabelsT = int | Iterable[Hashable]
 _LossOutputT = torch.Tensor | tuple[torch.Tensor, torch.Tensor]
@@ -193,3 +200,113 @@ class Trainer(transformers.Trainer):
         if weights is not None:
             loss = (loss * weights).mean()
         return loss
+
+
+class Trial:
+    """Experiment trial spawned from :class:`optuna.Trial`.
+
+    Attributes
+    ----------
+    experiment
+        Parent experiment instance.
+    model
+        Name of the model section in the config.
+    trial
+        :class:`optuna.Trial` instance.
+    """
+
+    def __init__(
+        self,
+        model: str,
+        trial: optuna.Trial,
+        config: Config,
+        paths: Paths,
+        dataset: DatasetDict,
+        *,
+        train_split: str = "train",
+        eval_split: str = "test",
+    ) -> None:
+        self.model = model
+        self.trial = trial
+        self.config = config
+        self.paths = paths
+        self.tokenizer = self.get_tokenizer()
+        self.dataset = self.preprocess_dataset(dataset)
+        self.train_split = train_split
+        self.eval_split = eval_split
+
+    @property
+    def model_config(self) -> Config:
+        return self.config.models[self.model]
+
+    def get_tokenizer(self) -> transformers.PreTrainedTokenizer:
+        return transformers.AutoTokenizer.from_pretrained(self.model_config.base)
+
+    def preprocess_dataset(self, dataset: DatasetDict) -> DatasetDict:
+        return dataset.tokenize(self.tokenizer, **self.model_config.tokenize)
+
+    def get_model_init(self) -> Callable[[], transformers.PreTrainedModel]:
+        id2label = dict(enumerate(self.config.annotations.labels))
+        label2id = {v: k for k, v in id2label.items()}
+
+        def model_init() -> transformers.PreTrainedModel:
+            return AutoModelForSequenceClassification.from_pretrained(
+                self.model_config.base,
+                num_labels=len(id2label),
+                id2label=id2label,
+                label2id=label2id,
+            )
+
+        return model_init
+
+    def get_training_args(self) -> TrainingArguments:
+        hyper = {}
+        for param, spec in self.model_config.training.hyper.space.items():
+            spec = spec.copy()
+            type = spec.pop("type")
+            hyper[param] = getattr(self.trial, f"suggest_{type}")(param, **spec)
+        return self.model_config.training.arguments(self.paths.models / self.model, **hyper)
+
+    def get_training_callbacks(self) -> list[transformers.trainer_callback.TrainerCallback]:
+        return [cb.make() for cb in self.model_config.training.callbacks]
+
+    def get_compute_metrics(self) -> Evaluation:
+        return self.model_config.training.evaluation()
+
+    def get_trainer(self) -> Trainer:
+        return Trainer(
+            args=self.get_training_args(),
+            model_init=self.get_model_init(),
+            train_dataset=self.dataset[self.train_split],
+            eval_dataset=self.dataset[self.eval_split],
+            tokenizer=self.tokenizer,
+            compute_metrics=self.get_compute_metrics(),
+            callbacks=self.get_training_callbacks(),
+        )
+
+
+def define_objective(
+    config: Config,
+    paths: Paths,
+    dataset: DatasetDict,
+    models: Sequence[str],
+    *,
+    trial_class: type[Trial] = Trial,
+) -> Callable[[optuna.Trial], float]:
+    def objective(trial: optuna.Trial) -> float:
+        model = trial.suggest_categorical("model", models)
+        trainer = trial_class(model, trial, config, paths, dataset).get_trainer()
+        trainer.train()
+        return _get_objective_value(trainer)
+
+    return objective
+
+
+def _get_objective_value(trainer: Trainer) -> str:
+    metric = trainer.args.metric_for_best_model
+    lowered = metric.lower()
+    if lowered == "loss" or lowered.endswith("_loss"):
+        field = "eval_loss"
+        return min(log[field] for log in trainer.state.log_history if field in log)
+    errmsg = f"'{metric}' selection metric is not supported"
+    raise ValueError(errmsg)

@@ -12,7 +12,7 @@ from datasets.features import Features
 
 from newsuse.annotations import Annotations
 from newsuse.types import PathLike
-from newsuse.utils import hashseed, inthash
+from newsuse.utils import hashseed
 
 __all__ = (
     "Dataset",
@@ -80,6 +80,9 @@ class DatasetDict(datasets.DatasetDict):
         return self.__class__(
             {name: split.remove_columns(*args, **kwargs) for name, split in self.items()}
         )
+
+    def sort(self, *args: Any, **kwargs: Any) -> Self:
+        return self.__class__(super().sort(*args, **kwargs))
 
     def sample(
         self,
@@ -181,8 +184,6 @@ class Dataset(datasets.Dataset):
         cls,
         annotations: Annotations,
         *,
-        top_n: int | None = None,
-        seed: int = 0,
         metadata: str | Iterable[str] = (),
     ) -> Self:
         """Construct from instances of :class:`newsuse.annotations.Annotations`.
@@ -197,23 +198,12 @@ class Dataset(datasets.Dataset):
         """
         data = annotations.data
 
-        if top_n:
-            seed = hashseed(data["key"], seed)
-            n_annotations = data[annotations.annotator_cols].notnull().sum(axis=1)
-            data = (
-                data.assign(n_annotations=n_annotations)
-                .groupby(annotations.config.sheet_index_name)
-                .sample(frac=1, replace=False, random_state=seed)
-                .sort_values("n_annotations", ascending=False)
-                .head(top_n)
-                .reset_index(drop=True)
-                .drop(columns="n_annotations")
-            )
-
         if isinstance(metadata, str):
             metadata = [metadata]
-        data = annotations.data[["key", *metadata, "human", "text"]].dropna(
-            ignore_index=True
+        data = (
+            annotations.data[["key", *metadata, "human", "text"]]
+            .dropna(ignore_index=True)
+            .sort_values(by="key", ignore_index=True)
         )
         dataset = (
             cls.from_pandas(data)
@@ -256,7 +246,7 @@ class Dataset(datasets.Dataset):
 
         seed = self.get_seed(seed)
         kwargs = {"seed": seed, "keep_in_memory": True, **kwargs}
-        data = self.shuffle(**kwargs)
+        data = self.sort("key").shuffle(**kwargs)
         dset = {}
         start = 0
         for name, n in splits.items():
@@ -313,7 +303,7 @@ class Dataset(datasets.Dataset):
     def tokenize(
         self,
         tokenizer: Callable[[str, ...], list[int]],
-        text_field: str = "text",
+        field: str = "text",
         *,
         padding: str = "max_length",
         truncation: bool = True,
@@ -322,7 +312,7 @@ class Dataset(datasets.Dataset):
     ) -> Self:
         def tokenize(example):
             return tokenizer(
-                example[text_field], padding=padding, truncation=truncation, **kwargs
+                example[field], padding=padding, truncation=truncation, **kwargs
             )
 
         dataset = self.map(tokenize, batched=batched)
@@ -374,13 +364,15 @@ class Dataset(datasets.Dataset):
             super().align_labels_with_mapping(label2id, *args, **kwargs)
         )
 
+    def sort(self, *args: Any, **kwargs: Any) -> Self:
+        return self.from_dataset(super().sort(*args, **kwargs))
+
     @singledispatchmethod
     def sample(
         self,
         size,
         *,
         seed: int | np.random.Generator | None = None,
-        hash_key: str | None = "key",
         **kwargs: Any,
     ) -> Self:
         if size % 1 != 0:
@@ -391,16 +383,14 @@ class Dataset(datasets.Dataset):
             errmsg = f"size has to be positive, not {size}"
             raise ValueError(errmsg)
         if not isinstance(seed, np.random.Generator):
-            if hash_key and hash_key in self.column_names:
-                seed = seed or 0
-                seed += inthash(tuple(self[hash_key]))
+            seed = self.get_seed(seed)
             rng = np.random.default_rng(seed)
         else:
             rng = seed
         idx = np.arange(len(self))
         rng.shuffle(idx)
         idx = idx[:size]
-        return self.select(idx, **kwargs)
+        return self.sort("key").select(idx, **kwargs)
 
     @sample.register
     def _(self, size: float, **kwargs: Any) -> Self:

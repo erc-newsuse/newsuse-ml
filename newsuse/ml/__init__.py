@@ -19,4 +19,4 @@ from .models import (
     SetFitModel,
 )
 from .pipelines import TextClassificationPipeline, pipeline
-from .training import Trainer, TrainingArguments
+from .training import Trainer, TrainingArguments, define_objective
