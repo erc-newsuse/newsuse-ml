@@ -16,7 +16,7 @@ license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "newsuse @ git+ssh://git@github.com/erc-newsuse/newsuse.git",
+    "newsuse @ git+ssh://git@github.com/erc-newsuse/newsuse.git@v2.0",
     "scikit-learn>=1.5",
     "torch>=2.4",
     "transformers>=4.44,<4.46",
