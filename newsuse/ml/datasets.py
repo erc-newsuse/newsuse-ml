@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 from datasets.features import Features
 
-from newsuse.annotations import Annotations
 from newsuse.types import PathLike
 from newsuse.utils import hashseed
 
@@ -178,40 +177,6 @@ class Dataset(datasets.Dataset):
     def get_seed(self, seed: int | None = None) -> int:
         keys = tuple(sorted(self["key"]))
         return hashseed(keys, seed)
-
-    @classmethod
-    def from_annotations(
-        cls,
-        annotations: Annotations,
-        *,
-        metadata: str | Iterable[str] = (),
-    ) -> Self:
-        """Construct from instances of :class:`newsuse.annotations.Annotations`.
-
-        Parameters
-        ----------
-        top_n
-            Use only ``top_n`` observations with greatest number of annotations
-            per sheet (randomly shuffled).
-        metadata
-            Column with additional metadata to retain.
-        """
-        data = annotations.data
-
-        if isinstance(metadata, str):
-            metadata = [metadata]
-        data = (
-            annotations.data[["key", *metadata, "human", "text"]]
-            .dropna(ignore_index=True)
-            .sort_values(by="key", ignore_index=True)
-        )
-        dataset = (
-            cls.from_pandas(data)
-            .rename_column("human", "label")
-            .class_encode_column("label")
-            .align_labels_with_mapping(annotations.config.labels, "label")
-        )
-        return cls.from_dataset(dataset)
 
     def train_test_split(self, *args: Any, **kwargs: Any) -> Self:
         kwargs["seed"] = self.get_seed(kwargs.get("seed"))
@@ -446,3 +411,45 @@ class Dataset(datasets.Dataset):
     def update_info(self, info: datasets.DatasetInfo) -> Self:
         """Update metadata based on ``dataset``."""
         return self.__class__(self.data, info, self.split, self._indices, self._fingerprint)
+
+    try:
+        # Define annotations based constructor only when
+        # 'newsuse.annotations' is available
+        from newsuse.annotations import Annotations
+
+        @classmethod
+        def from_annotations(
+            cls,
+            annotations: Annotations,
+            *,
+            metadata: str | Iterable[str] = (),
+        ) -> Self:
+            """Construct from instances of :class:`newsuse.annotations.Annotations`.
+
+            Parameters
+            ----------
+            top_n
+                Use only ``top_n`` observations with greatest number of annotations
+                per sheet (randomly shuffled).
+            metadata
+                Column with additional metadata to retain.
+            """
+            data = annotations.data
+
+            if isinstance(metadata, str):
+                metadata = [metadata]
+            data = (
+                annotations.data[["key", *metadata, "human", "text"]]
+                .dropna(ignore_index=True)
+                .sort_values(by="key", ignore_index=True)
+            )
+            dataset = (
+                cls.from_pandas(data)
+                .rename_column("human", "label")
+                .class_encode_column("label")
+                .align_labels_with_mapping(annotations.config.labels, "label")
+            )
+            return cls.from_dataset(dataset)
+
+    except ImportError:
+        pass
