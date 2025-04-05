@@ -94,7 +94,7 @@ class Trainer(transformers.Trainer):
 
     def save_model(
         self,
-        output_dir: PathLike,
+        output_dir: PathLike | None = None,
         *args: Any,
         remove_checkpoints: bool = False,
         **kwargs: Any,
