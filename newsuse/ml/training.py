@@ -99,16 +99,17 @@ class Trainer(transformers.Trainer):
         remove_checkpoints: bool = False,
         **kwargs: Any,
     ) -> None:
-        output_dir = Path(output_dir)
-        if output_dir.exists():
-            for path in output_dir.glob("*"):
-                if not path.name.startswith("checkpoint-"):
-                    if path.is_file():
-                        path.unlink()
-                    else:
-                        rmtree(path)
+        if output_dir:
+            output_dir = Path(output_dir)
+            if output_dir.exists():
+                for path in output_dir.glob("*"):
+                    if not path.name.startswith("checkpoint-"):
+                        if path.is_file():
+                            path.unlink()
+                        else:
+                            rmtree(path)
         super().save_model(output_dir, *args, **kwargs)
-        if remove_checkpoints:
+        if output_dir and remove_checkpoints:
             self.remove_checkpoints()
 
     def remove_checkpoints(self) -> None:
