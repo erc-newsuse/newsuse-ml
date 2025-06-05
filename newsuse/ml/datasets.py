@@ -182,32 +182,54 @@ class Dataset(datasets.Dataset):
         kwargs["seed"] = self.get_seed(kwargs.get("seed"))
         return super().train_test_split(*args, **kwargs)
 
-    @singledispatchmethod
     def make_splits(
         self,
         splits: Mapping[str, float | int],
         *,
         seed: int | None = None,
-        main_split: str = "train",
+        main_split: str | None = None,
         **kwargs: Any,
     ) -> DatasetDict[str, Self]:
-        """Split dataset."""
+        """Split dataset.
+
+        Parameters
+        ----------
+        splits
+            Mapping of split names to number of examples or fraction of the dataset.
+            If a float is given, it is interpreted as a fraction of the dataset size.
+        seed
+            Random seed for shuffling the dataset before splitting.
+        main_split
+            Name of the main split, which is used when the number of examples in
+            ``splits`` is not equal to the size of the dataset.
+            By default, the largest split is used as the main split.
+
+        Examples
+        --------
+        >>> data = pd.DataFrame({"key": "", "x": np.arange(4995)})
+        >>> splits = {"train": 0.8, "test": 0.1, "validation": 0.1}
+        >>> dset = Dataset.from_pandas(data).make_splits(splits, seed=42)
+        >>> [(k, len(v)) for k, v in dset.items()]
+        [('train', 3995), ('test', 500), ('validation', 500)]
+        """
         splits = dict(splits)
         n_examples = len(self)
 
+        if main_split is None:
+            main_split = list(splits)[np.argmax(list(splits.values()))]
+
         for k, v in splits.items():
             if isinstance(v, float):
-                splits[k] = int(round(v * n_examples))
+                splits[k] = int(ceil(v * n_examples))
 
         n_in_splits = sum(splits.values())
-        if n_in_splits > n_examples:
-            errmsg = "cannot define splits with more examples than the size of the dataset"
-            raise ValueError(errmsg)
-        if n_in_splits < n_examples:
-            if main_split in splits:
-                errmsg = f"default split name '{main_split}' is already defined"
+        if (diff := n_examples - n_in_splits) != 0:
+            splits[main_split] += diff
+
+        for split, n in splits.items():
+            if n <= 0:
+                errmsg = f"split '{split}' is empty (n = {n}, out of {n_examples})"
                 raise ValueError(errmsg)
-            splits[main_split] = n_examples - n_in_splits
 
         seed = self.get_seed(seed)
         kwargs = {"seed": seed, "keep_in_memory": True, **kwargs}
