@@ -146,6 +146,10 @@ class TextClassificationPipeline(transformers.TextClassificationPipeline):
         dataset = KeyDataset(inputs, key)
         return self.__call__(dataset, *args, **kwargs)
 
+    @__call__.register
+    def _(self, input: str) -> _OutputT:
+        return super().__call__(input)
+
     def postprocess(self, *args: Any, **kwargs: Any) -> dict[str, float]:
         outputs = super().postprocess(*args, **kwargs)
         if not isinstance(outputs, Mapping):

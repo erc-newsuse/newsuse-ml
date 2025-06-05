@@ -197,7 +197,7 @@ class Dataset(datasets.Dataset):
 
         for k, v in splits.items():
             if isinstance(v, float):
-                splits[k] = int(ceil(v * n_examples))
+                splits[k] = int(round(v * n_examples))
 
         n_in_splits = sum(splits.values())
         if n_in_splits > n_examples:
@@ -362,8 +362,11 @@ class Dataset(datasets.Dataset):
         if size > 1:
             errmsg = "'size' cannot exceed '1.0' fraction of the examples in the dataset"
             raise ValueError(errmsg)
-        size = int(ceil(len(self)))
-        return self.sample(size, **kwargs)
+        if size <= 0:
+            errmsg = "'size' has to be positive"
+            raise ValueError(errmsg)
+        n = int(ceil(size * len(self)))
+        return self.sample(n, **kwargs)
 
     def add_balancing_weights(
         self, *fields: str, weight_field_name: str = "weight"
